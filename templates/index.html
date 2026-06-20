@@ -1,0 +1,226 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anonymous Chat</title>
+    <style>
+        :root {
+            color-scheme: dark;
+            --background: #0d0d0d;
+            --panel: #151515;
+            --border: #342044;
+            --purple: #b45cff;
+            --green: #54f59b;
+            --text: #eeeeee;
+            --muted: #929292;
+            --system: #d18cff;
+        }
+
+        * { box-sizing: border-box; }
+        html, body { height: 100%; margin: 0; }
+
+        body {
+            display: flex;
+            justify-content: center;
+            background: radial-gradient(circle at top, #21102d 0, transparent 42%), var(--background);
+            color: var(--text);
+            font-family: Consolas, "Courier New", monospace;
+        }
+
+        .chat-app {
+            display: flex;
+            flex-direction: column;
+            width: min(900px, 100%);
+            height: 100%;
+            border-inline: 1px solid var(--border);
+            background: rgba(13, 13, 13, 0.96);
+        }
+
+        header {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 20px;
+            padding: 18px 22px;
+            border-bottom: 1px solid var(--border);
+            background: var(--panel);
+        }
+
+        .title {
+            margin: 0;
+            color: var(--purple);
+            font-size: 1.25rem;
+            letter-spacing: 0.08em;
+        }
+
+        .online { color: var(--green); font-size: 0.9rem; white-space: nowrap; }
+        .online-dot {
+            display: inline-block;
+            width: 9px;
+            height: 9px;
+            margin-right: 7px;
+            border-radius: 50%;
+            background: var(--green);
+            box-shadow: 0 0 9px var(--green);
+        }
+
+        #messages {
+            flex: 1;
+            min-height: 0;
+            margin: 0;
+            padding: 20px;
+            overflow-y: auto;
+            list-style: none;
+            scrollbar-color: #7f32ba var(--panel);
+        }
+
+        .message { margin-bottom: 13px; line-height: 1.45; overflow-wrap: anywhere; }
+        .message .sender { margin-right: 8px; color: var(--green); font-weight: bold; }
+        .system-message {
+            margin-bottom: 12px;
+            color: var(--system);
+            font-size: 0.9rem;
+            font-style: italic;
+            overflow-wrap: anywhere;
+        }
+
+        .composer {
+            display: flex;
+            gap: 10px;
+            padding: 16px;
+            border-top: 1px solid var(--border);
+            background: var(--panel);
+        }
+
+        #message-input {
+            flex: 1;
+            min-width: 0;
+            padding: 13px 14px;
+            border: 1px solid #49305d;
+            border-radius: 5px;
+            outline: none;
+            background: #090909;
+            color: var(--text);
+            font: inherit;
+        }
+
+        #message-input:focus {
+            border-color: var(--purple);
+            box-shadow: 0 0 0 2px rgba(180, 92, 255, 0.14);
+        }
+
+        #message-input::placeholder { color: var(--muted); }
+
+        #send-button {
+            padding: 12px 22px;
+            border: 1px solid var(--green);
+            border-radius: 5px;
+            cursor: pointer;
+            background: #143523;
+            color: var(--green);
+            font: inherit;
+            font-weight: bold;
+        }
+
+        #send-button:hover { background: var(--green); color: #07130c; }
+        #send-button:active { transform: translateY(1px); }
+
+        @media (max-width: 550px) {
+            header { padding: 14px; }
+            .title { font-size: 1rem; }
+            #messages { padding: 14px; }
+            .composer { padding: 10px; }
+            #send-button { padding-inline: 14px; }
+        }
+    </style>
+</head>
+<body>
+    <main class="chat-app">
+        <header>
+            <h1 class="title">[ ANONYMOUS CHAT ]</h1>
+            <div class="online">
+                <span class="online-dot"></span><span id="user-count">0</span> online
+            </div>
+        </header>
+
+        <ul id="messages" aria-live="polite"></ul>
+
+        <form class="composer" id="message-form">
+            <input id="message-input" type="text" maxlength="2000"
+                   placeholder="Type an anonymous message..." autocomplete="off" autofocus>
+            <button id="send-button" type="submit">Send</button>
+        </form>
+    </main>
+
+    <script src="https://cdn.jsdelivr.net/npm/socket.io-client@4.8.1/dist/socket.io.min.js"></script>
+    <script>
+        "use strict";
+
+        const socket = io();
+        const messages = document.getElementById("messages");
+        const form = document.getElementById("message-form");
+        const input = document.getElementById("message-input");
+        const userCount = document.getElementById("user-count");
+
+        function scrollToLatest() {
+            messages.scrollTop = messages.scrollHeight;
+        }
+
+        function addSystemMessage(message) {
+            const item = document.createElement("li");
+            item.className = "system-message";
+            item.textContent = `\u2022 ${message}`;
+            messages.appendChild(item);
+            scrollToLatest();
+        }
+
+        function addChatMessage(sender, message) {
+            const item = document.createElement("li");
+            item.className = "message";
+
+            const senderElement = document.createElement("span");
+            senderElement.className = "sender";
+            senderElement.textContent = `${sender}:`;
+
+            const messageElement = document.createElement("span");
+            messageElement.textContent = message;
+
+            item.append(senderElement, messageElement);
+            messages.appendChild(item);
+            scrollToLatest();
+        }
+
+        form.addEventListener("submit", (event) => {
+            event.preventDefault();
+            const message = input.value.trim();
+
+            if (!message || !socket.connected) return;
+
+            socket.emit("message", { message });
+            input.value = "";
+            input.focus();
+        });
+
+        socket.on("system_message", (data) => {
+            if (data && data.message) addSystemMessage(data.message);
+        });
+
+        socket.on("chat_message", (data) => {
+            if (data && data.sender && data.message) {
+                addChatMessage(data.sender, data.message);
+            }
+        });
+
+        socket.on("user_count", (data) => {
+            if (data && Number.isInteger(data.count)) userCount.textContent = data.count;
+        });
+
+        socket.on("connect_error", () => addSystemMessage("Unable to connect to the chat server."));
+        socket.on("disconnect", () => {
+            userCount.textContent = "0";
+            addSystemMessage("Disconnected. Attempting to reconnect...");
+        });
+    </script>
+</body>
+</html>
