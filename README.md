@@ -144,7 +144,7 @@ from flask import Flask, render_template, request
 from flask_socketio import SocketIO, emit
  
 app = Flask(__name__)
-app.config['SECRET_KEY'] = 'tor-chat-secret'
+app.config['SECRET_KEY'] = '7473875jdjdbg'
 socketio = SocketIO(
     app,
     async_mode='threading',
